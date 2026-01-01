@@ -39,7 +39,7 @@ class ThreadPool{
         running = false;
         dequeue_condition_var.notify_all();
         jobs_available_condition_var.notify_all();
-        
+
         // join all threads
         for(auto& th : threads_){
             th.join();
@@ -60,15 +60,11 @@ class ThreadPool{
         std::condition_variable dequeue_condition_var;
         std::condition_variable jobs_available_condition_var;
 
-        static void stopping(){
-            std::cout << "Thread " << std::this_thread::get_id() << " Stopping\n";
-        }
-
 //------- Retreive job from queue
         bool dequeue(std::function<void()>& work_function) {
             std::unique_lock<std::mutex> lock(dequeue_mutex);
             std::unique_lock<std::mutex> job_count_lock(job_mutex); 
-            std::cout << "Thread "<< std::this_thread::get_id() << " Has locked dequeue()\n";
+            // std::cout << "Thread "<< std::this_thread::get_id() << " Has locked dequeue()\n";
 
             dequeue_condition_var.wait(lock, [this](){ // essentially a better lock.lock();
                  return !running || dequeue_open; // re-checks this upon 
@@ -84,7 +80,6 @@ class ThreadPool{
 
             
             //do work
-            std::cout << "doing work\n";
             dequeue_open = false;
             work_function = std::move(tasks.front());
             tasks.pop();
@@ -96,54 +91,58 @@ class ThreadPool{
             job_count_lock.unlock();
             dequeue_condition_var.notify_one();
 
-            std::cout << "returning\n";
             return true;
         }
 //------ Run the thread pool
         void run(){
-            for(int i = 0; i < number_of_threads; i++){
+            for(int i = 1; i <= number_of_threads; i++){
                 threads_.emplace_back(std::thread([this, i](){
-                    std::cout << "Thread " << i << " Created\n";
                     while(running){
-                        std::cout << "Thread " << i << " Awaiting work\n"; 
+                        // std::cout << "Thread " << i << " Awaiting work\n"; 
                         //get a function, do its work.
                         std::function<void()> work;
-                        if(dequeue(work)){ work(); }
+                        if(dequeue(work)){
+                            std::cout << "Thread " << i << " Work:   ";
+                            work();
+                        }
                     }
                     std::cout << "Thread "<<i<<" Stopped\n";
                 }));
             }
         }
-
-    
-
-
 };
 
 // Work to be done
 void func1(){
     std::cout << "Function 1 Printing!\n";
+    std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 void func2(){
     std::cout << "Function 2 Printing!\n";
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    
 }
 void func3(){
     std::cout << "Function 3 Printing!\n";
+    std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 void func4(){
     std::cout << "Function 4 Printing!\n";
+    std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 void func5(){
     std::cout << "Function 5 Printing!\n";
+    std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 void func6(){
     std::cout << "Function 6 Printing!\n";
+    std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 
 int main(){
     std::cout << "Thread Pool\n";
     // tests
-    ThreadPool pool(1);
+    ThreadPool pool(5);
     pool.enqueue(func1);
     pool.enqueue(func2);
     pool.enqueue(func3);
@@ -154,7 +153,16 @@ int main(){
         std::cout << "Lambda Fn Printing!\n";
     });
     pool.start();
+
     std::this_thread::sleep_for(std::chrono::seconds(2));
     pool.stop();
     return 0;
 }
+
+// TODO :
+/*
+
+
+
+
+*/
