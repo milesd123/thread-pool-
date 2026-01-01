@@ -12,7 +12,7 @@ class ThreadPool{
     }
     
     //TODO: Implement concurrent enqueueing.
-    void enqueue(const std::function<void()>&& func){
+    void enqueue(std::function<void()> func){
         if(num_jobs < 0){
             std::cout << "Negative job count, potential data race\n";
         }
@@ -39,7 +39,11 @@ class ThreadPool{
         running = false;
         dequeue_condition_var.notify_all();
         jobs_available_condition_var.notify_all();
-
+        
+        // join all threads
+        for(auto& th : threads_){
+            th.join();
+        }
     }
 
     private:
@@ -58,10 +62,6 @@ class ThreadPool{
 
         static void stopping(){
             std::cout << "Thread " << std::this_thread::get_id() << " Stopping\n";
-        }
-
-        auto call(){
-            return this->stopping();
         }
 
 //------- Retreive job from queue
@@ -113,10 +113,6 @@ class ThreadPool{
                     std::cout << "Thread "<<i<<" Stopped\n";
                 }));
             }
-
-            // for(auto& th : threads_){
-            //     th.join();
-            // }
         }
 
     
@@ -124,6 +120,7 @@ class ThreadPool{
 
 };
 
+// Work to be done
 void func1(){
     std::cout << "Function 1 Printing!\n";
 }
@@ -147,18 +144,17 @@ int main(){
     std::cout << "Thread Pool\n";
     // tests
     ThreadPool pool(1);
-    pool.enqueue(std::move(func1));
-    pool.enqueue(std::move(func2));
-    pool.enqueue(std::move(func3));
-    pool.enqueue(std::move(func4));
-    pool.enqueue(std::move(func5));
-    pool.enqueue(std::move(func6));
+    pool.enqueue(func1);
+    pool.enqueue(func2);
+    pool.enqueue(func3);
+    pool.enqueue(func4);
+    pool.enqueue(func5);
+    pool.enqueue(func6);
     pool.enqueue([](){
         std::cout << "Lambda Fn Printing!\n";
     });
     pool.start();
     std::this_thread::sleep_for(std::chrono::seconds(2));
     pool.stop();
-    std::cin.get();
     return 0;
 }
