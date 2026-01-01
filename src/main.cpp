@@ -5,6 +5,9 @@
 #include <future>
 #include <queue>
 
+#include "printer.hpp"
+Printer printer;
+
 class ThreadPool{
     public:
     ThreadPool(size_t n) :   number_of_threads(n){
@@ -13,8 +16,17 @@ class ThreadPool{
     
     //TODO: Implement concurrent enqueueing.
     void enqueue(std::function<void()> func){
+        std::unique_lock<std::mutex> lock(queue_mutex);
+
+        queue_condition_var.wait(lock, [this](){
+            return queue_open || !running;
+        });
+
+        queue_open = false;
+
         if(num_jobs < 0){
-            std::cout << "Negative job count, potential data race\n";
+            printer.print("Negative job count, potential data race...\n");
+            // std::cout << "Negative job count, potential data race...\n";
         }
         
         num_jobs++;
@@ -24,20 +36,26 @@ class ThreadPool{
             //only 1 thread will be awaiting this.
             jobs_available_condition_var.notify_one();
         }
+        printer.print("Function queued. job count: " + std::to_string(num_jobs) + "\n");
+        // std::cout << "Function queued. job count: " << num_jobs << std::endl;
 
-        std::cout << "Function queued. job count: " << num_jobs << std::endl;
+        queue_open = true;
+        queue_condition_var.notify_one();
+        lock.unlock();
     }
 
     void start(){ 
         running = true;
-        std::cout << "Started\n";
+        printer.print("Started\n");
+        // std::cout << "Started\n";
         run();
     }
 
     void stop(){
-        std::cout << "Stopping...\n";
+        printer.print("Stopping...\n");
+        // std::cout << "Stopping...\n";
         running = false;
-        dequeue_condition_var.notify_all();
+        queue_condition_var.notify_all();
         jobs_available_condition_var.notify_all();
 
         // join all threads
@@ -54,20 +72,20 @@ class ThreadPool{
         size_t num_jobs = 0;
 //------- Atomic/concurrency members
         bool running = false;
-        bool dequeue_open = true;
-        std::mutex dequeue_mutex;
+        bool queue_open = true;
+        std::mutex queue_mutex;
         std::mutex job_mutex;
-        std::condition_variable dequeue_condition_var;
+        std::condition_variable queue_condition_var;
         std::condition_variable jobs_available_condition_var;
 
 //------- Retreive job from queue
         bool dequeue(std::function<void()>& work_function) {
-            std::unique_lock<std::mutex> lock(dequeue_mutex);
+            std::unique_lock<std::mutex> lock(queue_mutex);
             std::unique_lock<std::mutex> job_count_lock(job_mutex); 
             // std::cout << "Thread "<< std::this_thread::get_id() << " Has locked dequeue()\n";
 
-            dequeue_condition_var.wait(lock, [this](){ // essentially a better lock.lock();
-                 return !running || dequeue_open; // re-checks this upon 
+            queue_condition_var.wait(lock, [this](){ // essentially a better lock.lock();
+                 return !running || queue_open; // re-checks this upon notify
             });   
 
             jobs_available_condition_var.wait(job_count_lock, [this](){
@@ -80,16 +98,16 @@ class ThreadPool{
 
             
             //do work
-            dequeue_open = false;
+            queue_open = false;
             work_function = std::move(tasks.front());
             tasks.pop();
             num_jobs--;
 
             // let another thread access now
-            dequeue_open = true;
+            queue_open = true;
             lock.unlock();
             job_count_lock.unlock();
-            dequeue_condition_var.notify_one();
+            queue_condition_var.notify_one();
 
             return true;
         }
@@ -102,11 +120,11 @@ class ThreadPool{
                         //get a function, do its work.
                         std::function<void()> work;
                         if(dequeue(work)){
-                            std::cout << "Thread " << i << " Work:   ";
+                            printer.print("Thread " + std::to_string(i) + " Work: ");
                             work();
                         }
                     }
-                    std::cout << "Thread "<<i<<" Stopped\n";
+                    printer.print("Thread " + std::to_string(i) + " Stopped\n");
                 }));
             }
         }
@@ -114,33 +132,39 @@ class ThreadPool{
 
 // Work to be done
 void func1(){
-    std::cout << "Function 1 Printing!\n";
+    printer.print("Function 1 Printing!\n");
+    // std::cout << "Function 1 Printing!\n";
     std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 void func2(){
-    std::cout << "Function 2 Printing!\n";
+    printer.print("Function 2 Printing!\n");
     std::this_thread::sleep_for(std::chrono::seconds(1));
     
 }
 void func3(){
-    std::cout << "Function 3 Printing!\n";
+    printer.print("Function 3 Printing!\n");
     std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 void func4(){
-    std::cout << "Function 4 Printing!\n";
+    printer.print("Function 4 Printing!\n");
     std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 void func5(){
-    std::cout << "Function 5 Printing!\n";
+    printer.print("Function 5 Printing!\n");
     std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 void func6(){
-    std::cout << "Function 6 Printing!\n";
+    printer.print("Function 6 Printing!\n");
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+}
+
+void funcNew(){
+    printer.print("Running Queued Function Printing!\n");
     std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 
 int main(){
-    std::cout << "Thread Pool\n";
+    printer.print("main start\n");
     // tests
     ThreadPool pool(5);
     pool.enqueue(func1);
@@ -150,9 +174,13 @@ int main(){
     pool.enqueue(func5);
     pool.enqueue(func6);
     pool.enqueue([](){
-        std::cout << "Lambda Fn Printing!\n";
+        printer.print("Lambda Fn Printing!\n");
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+
     });
     pool.start();
+    pool.enqueue(funcNew);
+    pool.enqueue(funcNew);
 
     std::this_thread::sleep_for(std::chrono::seconds(2));
     pool.stop();
