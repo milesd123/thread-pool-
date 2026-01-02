@@ -14,8 +14,8 @@ class ThreadPool{
         threads_.reserve(n);
     }
     
-    //TODO: Implement concurrent enqueueing.
-    void enqueue(std::function<void()> func){
+    // add work to the queue
+    void enqueue(std::function<void(int)> func){
         std::unique_lock<std::mutex> lock(queue_mutex);
 
         queue_condition_var.wait(lock, [this](){
@@ -26,7 +26,6 @@ class ThreadPool{
 
         if(num_jobs < 0){
             printer.print("Negative job count, potential data race...\n");
-            // std::cout << "Negative job count, potential data race...\n";
         }
         
         num_jobs++;
@@ -37,7 +36,6 @@ class ThreadPool{
             jobs_available_condition_var.notify_one();
         }
         printer.print("Function queued. job count: " + std::to_string(num_jobs) + "\n");
-        // std::cout << "Function queued. job count: " << num_jobs << std::endl;
 
         queue_open = true;
         queue_condition_var.notify_one();
@@ -68,7 +66,7 @@ class ThreadPool{
 //------- Thread/vector members
         size_t number_of_threads;
         std::vector<std::thread> threads_;
-        std::queue<std::function<void()>> tasks;
+        std::queue<std::function<void(int)>> tasks;
         size_t num_jobs = 0;
 //------- Atomic/concurrency members
         bool running = false;
@@ -79,7 +77,7 @@ class ThreadPool{
         std::condition_variable jobs_available_condition_var;
 
 //------- Retreive job from queue
-        bool dequeue(std::function<void()>& work_function) {
+        bool dequeue(std::function<void(int)>& work_function) {
             std::unique_lock<std::mutex> lock(queue_mutex);
             std::unique_lock<std::mutex> job_count_lock(job_mutex); 
             // std::cout << "Thread "<< std::this_thread::get_id() << " Has locked dequeue()\n";
@@ -96,7 +94,6 @@ class ThreadPool{
                 return false;
             }
 
-            
             //do work
             queue_open = false;
             work_function = std::move(tasks.front());
@@ -118,10 +115,9 @@ class ThreadPool{
                     while(running){
                         // std::cout << "Thread " << i << " Awaiting work\n"; 
                         //get a function, do its work.
-                        std::function<void()> work;
+                        std::function<void(int)> work;
                         if(dequeue(work)){
-                            printer.print("Thread " + std::to_string(i) + " Work: ");
-                            work();
+                            work(i);
                         }
                     }
                     printer.print("Thread " + std::to_string(i) + " Stopped\n");
@@ -131,40 +127,40 @@ class ThreadPool{
 };
 
 // Work to be done
-void func1(){
-    printer.print("Function 1 Printing!\n");
-    // std::cout << "Function 1 Printing!\n";
+void func1(int x){
+    printer.print("Function 1 Printing from thread " + std::to_string(x) + "\n");
     std::this_thread::sleep_for(std::chrono::seconds(1));
 }
-void func2(){
-    printer.print("Function 2 Printing!\n");
+void func2(int x){
+    printer.print("Function 2 Printing from thread " + std::to_string(x) + "\n");
     std::this_thread::sleep_for(std::chrono::seconds(1));
     
 }
-void func3(){
-    printer.print("Function 3 Printing!\n");
+void func3(int x){
+    printer.print("Function 3 Printing from thread " + std::to_string(x) + "\n");
     std::this_thread::sleep_for(std::chrono::seconds(1));
 }
-void func4(){
-    printer.print("Function 4 Printing!\n");
+void func4(int x){
+    printer.print("Function 4 Printing from thread " + std::to_string(x) + "\n");
     std::this_thread::sleep_for(std::chrono::seconds(1));
 }
-void func5(){
-    printer.print("Function 5 Printing!\n");
+void func5(int x){
+    printer.print("Function 5 Printing from thread " + std::to_string(x) + "\n");
     std::this_thread::sleep_for(std::chrono::seconds(1));
 }
-void func6(){
-    printer.print("Function 6 Printing!\n");
+void func6(int x){
+    printer.print("Function 6 Printing from thread " + std::to_string(x) + "\n");
     std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 
-void funcNew(){
-    printer.print("Running Queued Function Printing!\n");
+void funcNew(int x){
+    printer.print(" New Func Printing from thread " + std::to_string(x) + "\n");
     std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 
 int main(){
     printer.print("main start\n");
+
     // tests
     ThreadPool pool(5);
     pool.enqueue(func1);
@@ -173,12 +169,14 @@ int main(){
     pool.enqueue(func4);
     pool.enqueue(func5);
     pool.enqueue(func6);
-    pool.enqueue([](){
-        printer.print("Lambda Fn Printing!\n");
-        std::this_thread::sleep_for(std::chrono::seconds(1));
 
+    // lambda
+    pool.enqueue([](int x){
+        printer.print("Lambda Fn Printing from thread " + std::to_string(x) + "\n");
+        std::this_thread::sleep_for(std::chrono::seconds(1));
     });
     pool.start();
+    // test adding work to queue while thread pool is working
     pool.enqueue(funcNew);
     pool.enqueue(funcNew);
 
@@ -186,11 +184,3 @@ int main(){
     pool.stop();
     return 0;
 }
-
-// TODO :
-/*
-
-
-
-
-*/
